@@ -62,6 +62,10 @@ func handleConn(sender User) {
     b := bufio.NewReader(sender.socket)
     sender.socket.Write([]byte("Привет, назови себя \n"))
     answer,_ := b.ReadBytes('\n')
+	if len(answer) == 0 { // если пользователь вышел на этом месте из программы
+		sender.goodbye()
+		return
+	}
     ind := strings.Index(string(answer), "::")
 	name := string(answer)[ind+2:len(answer)-1]
 	sender.changeName([]byte(name))
