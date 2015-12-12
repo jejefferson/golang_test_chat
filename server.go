@@ -17,6 +17,11 @@ type User struct {
 	addr string
 }
 
+const (
+	NORMAL int = iota // для сообщений обычного характера
+	SYSTEM // для системных сообщений
+)
+
 var users []User
 
 func main() {
@@ -67,8 +72,8 @@ func handleConn(sender User) {
 	if len(nick) == 1 {
 		nick = sender.addr
 	}
-	line := []byte(fmt.Sprintf("%v зашёл в чат\n", nick))
-	sendAll(sender, line)
+	line := []byte(" зашёл в чат\n")
+	sendAll(sender, line, SYSTEM)
     for { //бесконечный цикл, приём сообщений на сервер
         line, err := b.ReadBytes('\n')
         if err != nil {
@@ -80,7 +85,14 @@ func handleConn(sender User) {
 		ind := strings.Index(string(line), "::")
 		linekine := strings.TrimSpace(string(line)[ind+2:])
 		if strings.HasPrefix(linekine, "/") { // проверка служебного сообщения
-			switch linekine[1:] {
+			nomer := strings.Index(linekine, " ")
+			comand := linekine
+			if nomer > 0 {
+				comand = linekine[1:nomer]
+			} else {
+				comand = linekine[1:]
+			}
+			switch comand {
 				case "ping", "pin", "pi", "p", "pong", "png":
 					ind := bytes.Index(line, []byte("::"))
 					L := strings.TrimSpace(string(line[:ind]))
@@ -96,31 +108,34 @@ func handleConn(sender User) {
 					sender.socket.Write([]byte("\n"))
 					continue
 				case "info", "inf", "ino", "ifo":
-					text := "/info /ping /nick: /users \n"
+					text := "/info /ping /nick /users \n"
 					sender.socket.Write([]byte(text))
 					continue
-				default:
-					indkine := strings.Index(linekine, ": ")
+				case "nick", "nik", "name", "nickname", "nam", "nme":
+					indkine := strings.Index(linekine, " ")
 					kine := linekine[1:indkine]
 					dik := sort.SearchStrings(varnick,kine)
 					if dik > 0 && dik <len(varnick) {
-						ind := strings.LastIndex(string(line), ": ")
-						name := string(line)[ind+2:]
+						ind := strings.LastIndex(string(line), " ")
+						name := string(line)[ind+1:]
 						sender.changeName([]byte(name))
 						fmt.Printf(name)
-					} else {
-						text := "неверная команда, /info чтобы просмотреть все команды \n"
-						sender.socket.Write([]byte(text))
 					}
+					continue
+				default:
+					text := "неверная команда, /info чтобы просмотреть все команды \n"
+					sender.socket.Write([]byte(text))
 				continue
 			}
 		}
-		sendAll(sender, line)
+		sendAll(sender, line, NORMAL)
     } 
    defer sender.goodbye()
 }
 
 func (sender *User) goodbye() { // удаление отключенного юзера
+	line := []byte(" вышел из чата\n")
+	sendAll(*sender, line, SYSTEM)
 	for index, user := range(users) {
 		if user==*sender {
 			users = append(users[:index], users[index+1:]...)
@@ -129,10 +144,6 @@ func (sender *User) goodbye() { // удаление отключенного ю�
 			nickk := sender.name
 			if len(nickk) == 1 {
 				nickk = sender.addr
-			line := []byte(fmt.Sprintf("%v вышел из чата\n", nickk))
-				for _, user := range(users) {
-					user.socket.Write(line)
-				}
 			}
 		}
 	}
@@ -150,7 +161,7 @@ func (sender *User) changeName(answer []byte) { // смена имени юзе�
 	}
 }
 
-func sendAll (sender User, line []byte) { //рассылка сообщений
+func sendAll (sender User, line []byte, msg_mode int) { //рассылка сообщений
 	for _, user := range(users) { 
 		if user.socket != sender.socket {
 			var name []byte
@@ -162,7 +173,12 @@ func sendAll (sender User, line []byte) { //рассылка сообщений
 			ind := strings.Index(string(line), "::")
 			h, m, s := time.Now().Clock()
 			ttime := fmt.Sprint("[", h, ":", m, ":", s, "]")
-			mess := fmt.Sprint(ttime, " <", string(name), "> ", string(line)[ind+2:])
+			var mess string
+			if msg_mode == NORMAL {
+				mess = fmt.Sprint(ttime, " <", string(name), "> ", string(line)[ind+2:])
+			} else {
+				mess = fmt.Sprint(ttime, " *", string(name), " ", string(line)[ind+2:])
+			}
 			user.socket.Write([]byte(mess))
 		}
 	}
